@@ -1,0 +1,5 @@
+/* Base styles if needed. Tailwind is loaded via CDN in index.html */
+body {
+  margin: 0;
+  padding: 0;
+}

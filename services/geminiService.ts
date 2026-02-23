@@ -3,7 +3,17 @@ import { GoogleGenAI, Type } from "@google/genai";
 import { RawExtractedItem } from "../types";
 
 // Initialize Gemini Client
-const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+let ai: GoogleGenAI | null = null;
+try {
+  const apiKey = process.env.API_KEY;
+  if (apiKey) {
+    ai = new GoogleGenAI({ apiKey });
+  } else {
+    console.warn("Gemini API key is missing. AI features will be disabled.");
+  }
+} catch (error) {
+  console.error("Error initializing GoogleGenAI:", error);
+}
 
 const SYSTEM_INSTRUCTION = `
 You are a sales administrative assistant bot. Your goal is to extract product purchase intent.
@@ -18,13 +28,18 @@ Rules:
 `;
 
 export const parseUserMessage = async (
-  text: string, 
+  text: string,
   imageBase64?: string,
   contextItemName?: string
 ): Promise<RawExtractedItem[]> => {
   try {
+    if (!ai) {
+      console.warn("Gemini client not initialized. Returning empty list.");
+      return [];
+    }
+
     const parts: any[] = [];
-    
+
     if (imageBase64) {
       const cleanBase64 = imageBase64.replace(/^data:image\/(png|jpeg|jpg|webp);base64,/, '');
       parts.push({
@@ -34,7 +49,7 @@ export const parseUserMessage = async (
         }
       });
     }
-    
+
     let prompt = text;
     if (contextItemName) {
       prompt = `USER WANTS TO MODIFY EXISTING ITEM: "${contextItemName}". \nUSER REQUEST: "${text}"`;

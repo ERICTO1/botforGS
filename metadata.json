@@ -1,0 +1,5 @@
+{
+  "name": "Sale Admin Bot for GS",
+  "description": "An AI-powered pre-sales assistant that collects customer info, parses product requests from chat/images, and prepares order drafts.",
+  "requestFramePermissions": []
+}

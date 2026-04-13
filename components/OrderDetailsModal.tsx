@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { OrderEntry, ShippingMethod, LineItem, MatchOption, ItemStatus } from '../types';
-import { X, Save, MapPin, Truck, Calendar, User, Phone, MapPinned, ChevronLeft, PackageCheck, Puzzle, CheckCircle2, ArrowRight, Trash2, RefreshCw, MessageSquarePlus, Plus } from 'lucide-react';
+import { X, Save, MapPin, Truck, Calendar, User, Phone, MapPinned, ChevronLeft, PackageCheck, Puzzle, CheckCircle2, ArrowRight, Trash2, RefreshCw, MessageSquarePlus, Plus, Sparkles } from 'lucide-react';
 
 interface OrderDetailsModalProps {
   entry: OrderEntry;
@@ -33,10 +33,25 @@ const OrderDetailsModal: React.FC<OrderDetailsModalProps> = ({
   const [view, setView] = useState<ViewState>(initialItemToSwap ? 'SWAP' : 'OVERVIEW');
   const [selectedItem, setSelectedItem] = useState<LineItem | null>(initialItemToSwap || null);
   const [formData, setFormData] = useState<OrderEntry>({ ...entry });
+  const [addressParts, setAddressParts] = useState({
+      street: '',
+      suburb: '',
+      state: '',
+      postcode: ''
+  });
 
   // Sync internal form state if entry prop updates externally
   useEffect(() => {
     setFormData(prev => ({ ...prev, ...entry }));
+    if (entry.shippingAddress) {
+        const parts = entry.shippingAddress.split(',').map(s => s.trim());
+        setAddressParts({
+            street: parts[0] || '',
+            suburb: parts[1] || '',
+            state: parts[2] || '',
+            postcode: parts[3] || ''
+        });
+    }
   }, [entry]);
 
   const handleFormChange = (field: keyof OrderEntry, value: any) => {
@@ -44,6 +59,18 @@ const OrderDetailsModal: React.FC<OrderDetailsModalProps> = ({
     setFormData(updated);
     // Real-time save: immediately propagate changes
     onUpdateEntry(entry.id, updated);
+  };
+
+  const handleAddressChange = (field: keyof typeof addressParts, value: string) => {
+      const newParts = { ...addressParts, [field]: value };
+      setAddressParts(newParts);
+      const combined = [newParts.street, newParts.suburb, newParts.state, newParts.postcode].filter(Boolean).join(', ');
+      handleFormChange('shippingAddress', combined);
+  };
+
+  const handleSave = () => {
+      onUpdateEntry(entry.id, formData);
+      onClose();
   };
 
   const handleItemClick = (item: LineItem) => {
@@ -64,154 +91,197 @@ const OrderDetailsModal: React.FC<OrderDetailsModalProps> = ({
   // --- SUB-COMPONENTS ---
 
   const renderOverview = () => (
-    <div className="flex flex-col h-full animate-fadeIn">
-        {/* Header Section (Editable) */}
-        <div className="p-6 border-b border-slate-100 bg-slate-50 space-y-4 shrink-0">
-             <div className="flex items-center justify-between">
-                <h3 className="text-xs font-black text-slate-400 uppercase tracking-widest flex items-center gap-2">
-                    <Truck className="w-4 h-4" /> Logistics & Header
-                </h3>
-             </div>
-             
-             <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-1">
-                    <label className="text-[10px] font-bold text-slate-500 uppercase">PO Reference</label>
-                    <input 
-                        className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-sm font-bold text-slate-800 focus:outline-none focus:border-blue-500 transition-colors"
-                        value={formData.poNumber}
-                        onChange={(e) => handleFormChange('poNumber', e.target.value)}
-                    />
+    <div className="flex flex-col h-full animate-fadeIn bg-slate-50 p-6 overflow-y-auto space-y-6">
+        
+        {/* Row 1: PO Number */}
+        <div className="flex items-center gap-2">
+            <div className="w-6 h-6 bg-blue-600 text-white flex items-center justify-center rounded text-xs font-black">1</div>
+            <span className="text-red-500 font-bold">*</span>
+            <span className="text-sm font-bold text-slate-700 w-16">PO#</span>
+            <input 
+                className="flex-1 bg-white border border-slate-200 rounded-lg px-4 py-2 text-sm font-bold text-slate-800 focus:outline-none focus:border-blue-500 transition-colors shadow-sm"
+                value={formData.poNumber}
+                onChange={(e) => handleFormChange('poNumber', e.target.value)}
+            />
+        </div>
+
+        {/* Row 2: Logistics Method, ETA, Ship from */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+            <div className="space-y-2">
+                <label className="text-sm font-bold text-slate-700 flex items-center gap-1">
+                    <span className="text-red-500">*</span> Logistics Method
+                </label>
+                <div className="bg-white p-1 rounded-lg border border-slate-200 flex shadow-sm">
+                    <button
+                        onClick={() => handleFormChange('shippingMethod', ShippingMethod.DELIVERY)}
+                        className={`flex-1 py-2 rounded-md text-xs font-bold transition-all flex items-center justify-center gap-2 ${
+                            formData.shippingMethod === ShippingMethod.DELIVERY ? 'bg-slate-100 text-slate-900 border border-slate-200 shadow-sm' : 'text-slate-500 hover:bg-slate-50'
+                        }`}
+                    >
+                        <Truck className="w-4 h-4" /> Delivery
+                    </button>
+                    <button
+                        onClick={() => handleFormChange('shippingMethod', ShippingMethod.PICKUP)}
+                        className={`flex-1 py-2 rounded-md text-xs font-bold transition-all flex items-center justify-center gap-2 ${
+                            formData.shippingMethod === ShippingMethod.PICKUP ? 'bg-slate-100 text-slate-900 border border-slate-200 shadow-sm' : 'text-slate-500 hover:bg-slate-50'
+                        }`}
+                    >
+                        <MapPin className="w-4 h-4" /> Pickup
+                    </button>
                 </div>
-                <div className="space-y-1">
-                    <label className="text-[10px] font-bold text-slate-500 uppercase">Req. Date</label>
+            </div>
+
+            <div className="space-y-2">
+                <label className="text-sm font-bold text-slate-700 flex items-center gap-1">
+                    <span className="text-red-500">*</span> {formData.shippingMethod === ShippingMethod.PICKUP ? 'ETP' : 'ETA'}
+                </label>
+                <div className="relative">
+                    <Calendar className="w-4 h-4 absolute left-3 top-3 text-slate-400" />
                     <input 
                         type="date"
-                        className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-sm font-bold text-slate-800 focus:outline-none focus:border-blue-500 transition-colors"
+                        className="w-full bg-white border border-slate-200 rounded-lg pl-10 pr-4 py-2.5 text-sm font-bold text-slate-800 focus:outline-none focus:border-blue-500 transition-colors shadow-sm"
                         value={formData.requestedDate}
                         onChange={(e) => handleFormChange('requestedDate', e.target.value)}
                     />
                 </div>
-             </div>
+            </div>
 
-             <div className="bg-white p-1 rounded-xl border border-slate-200 flex">
-                <button
-                    onClick={() => handleFormChange('shippingMethod', ShippingMethod.DELIVERY)}
-                    className={`flex-1 py-2 rounded-lg text-[10px] font-black uppercase tracking-wide transition-all ${
-                        formData.shippingMethod === ShippingMethod.DELIVERY ? 'bg-blue-600 text-white shadow-md' : 'text-slate-400 hover:bg-slate-50'
-                    }`}
+            <div className="space-y-2">
+                <label className="text-sm font-bold text-slate-700 flex items-center gap-1">
+                    <span className="text-red-500">*</span> {formData.shippingMethod === ShippingMethod.PICKUP ? 'Pick Up from' : 'Ship from'}
+                </label>
+                <select 
+                    className="w-full bg-white border border-slate-200 rounded-lg px-4 py-2.5 text-sm font-bold text-slate-800 focus:outline-none focus:border-blue-500 transition-colors shadow-sm appearance-none"
+                    value={formData.shippingMethod === ShippingMethod.PICKUP ? (formData.pickupWarehouse || '') : (formData.shipFromWarehouse || '')}
+                    onChange={(e) => {
+                        if (formData.shippingMethod === ShippingMethod.PICKUP) {
+                            handleFormChange('pickupWarehouse', e.target.value);
+                        } else {
+                            handleFormChange('shipFromWarehouse', e.target.value);
+                        }
+                    }}
                 >
-                    Delivery
-                </button>
-                <button
-                    onClick={() => handleFormChange('shippingMethod', ShippingMethod.PICKUP)}
-                    className={`flex-1 py-2 rounded-lg text-[10px] font-black uppercase tracking-wide transition-all ${
-                        formData.shippingMethod === ShippingMethod.PICKUP ? 'bg-blue-600 text-white shadow-md' : 'text-slate-400 hover:bg-slate-50'
-                    }`}
-                >
-                    Pickup
-                </button>
-             </div>
+                    <option value="">Select Warehouse...</option>
+                    <option value="NSW Warehouse">NSW Warehouse</option>
+                    <option value="VIC Warehouse">VIC Warehouse</option>
+                    <option value="QLD Warehouse">QLD Warehouse</option>
+                </select>
+            </div>
+        </div>
 
-             {formData.shippingMethod === ShippingMethod.DELIVERY ? (
-                 <div className="grid grid-cols-1 gap-3 animate-fadeIn">
+        {/* Shipping Address Block (Only if Delivery) */}
+        {formData.shippingMethod === ShippingMethod.DELIVERY && (
+            <div className="bg-slate-100 p-5 rounded-xl border border-slate-200 space-y-4">
+                <div className="flex items-center justify-between border-b border-slate-200 pb-3">
+                    <h4 className="font-bold text-slate-800 text-sm">Shipping Address</h4>
+                    <button className="flex items-center gap-2 text-xs font-bold text-slate-700 bg-white border border-slate-300 px-3 py-1.5 rounded hover:bg-slate-50 transition-colors shadow-sm">
+                        <MapPinned className="w-3 h-3" /> Select from Address Book
+                    </button>
+                </div>
+
+                <div className="space-y-4 pt-2">
+                    <div className="space-y-1">
+                        <label className="text-xs font-medium text-slate-600 flex items-center gap-1"><span className="text-red-500">*</span> Street Address</label>
+                        <input 
+                            className="w-full bg-white border border-slate-200 rounded-lg px-3 py-2 text-sm font-bold text-slate-800 focus:outline-none focus:border-blue-500 shadow-sm"
+                            value={addressParts.street}
+                            onChange={(e) => handleAddressChange('street', e.target.value)}
+                        />
+                    </div>
+                    
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                        <div className="space-y-1">
+                            <label className="text-xs font-medium text-slate-600 flex items-center gap-1"><span className="text-red-500">*</span> City Suburb</label>
+                            <input 
+                                className="w-full bg-white border border-slate-200 rounded-lg px-3 py-2 text-sm font-bold text-slate-800 focus:outline-none focus:border-blue-500 shadow-sm"
+                                value={addressParts.suburb}
+                                onChange={(e) => handleAddressChange('suburb', e.target.value)}
+                            />
+                        </div>
+                        <div className="space-y-1">
+                            <label className="text-xs font-medium text-slate-600 flex items-center gap-1"><span className="text-red-500">*</span> State</label>
+                            <select 
+                                className="w-full bg-white border border-slate-200 rounded-lg px-3 py-2 text-sm font-bold text-slate-800 focus:outline-none focus:border-blue-500 shadow-sm appearance-none"
+                                value={addressParts.state}
+                                onChange={(e) => handleAddressChange('state', e.target.value)}
+                            >
+                                <option value="">Select State</option>
+                                <option value="QLD">QLD</option>
+                                <option value="NSW">NSW</option>
+                                <option value="VIC">VIC</option>
+                                <option value="WA">WA</option>
+                                <option value="SA">SA</option>
+                                <option value="TAS">TAS</option>
+                                <option value="ACT">ACT</option>
+                                <option value="NT">NT</option>
+                            </select>
+                        </div>
+                        <div className="space-y-1">
+                            <label className="text-xs font-medium text-slate-600 flex items-center gap-1"><span className="text-red-500">*</span> Postcode</label>
+                            <input 
+                                className="w-full bg-white border border-slate-200 rounded-lg px-3 py-2 text-sm font-bold text-slate-800 focus:outline-none focus:border-blue-500 shadow-sm"
+                                value={addressParts.postcode}
+                                onChange={(e) => handleAddressChange('postcode', e.target.value)}
+                            />
+                        </div>
+                    </div>
+                </div>
+            </div>
+        )}
+
+        {/* Pickup Warehouse Block (Only if Pickup) */}
+        {/* We merged this into the 'Pick Up from' field above to match the screenshot, so no extra block is needed here */}
+
+        {/* Recipient Details (Only if Delivery) */}
+        {formData.shippingMethod === ShippingMethod.DELIVERY && (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div className="space-y-1">
+                    <label className="text-sm font-bold text-slate-700 flex items-center gap-1"><span className="text-red-500">*</span> Recipient Name</label>
                     <input 
-                        placeholder="Recipient Name"
-                        className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold focus:outline-none focus:border-blue-500"
-                        value={formData.recipientName}
+                        className="w-full bg-white border border-slate-200 rounded-lg px-4 py-2.5 text-sm font-bold text-slate-800 focus:outline-none focus:border-blue-500 shadow-sm"
+                        value={formData.recipientName || ''}
                         onChange={(e) => handleFormChange('recipientName', e.target.value)}
                     />
-                    <input 
-                        placeholder="Shipping Address"
-                        className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold focus:outline-none focus:border-blue-500"
-                        value={formData.shippingAddress}
-                        onChange={(e) => handleFormChange('shippingAddress', e.target.value)}
-                    />
-                 </div>
-             ) : (
-                 <div className="animate-fadeIn">
-                     <select 
-                        className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold focus:outline-none focus:border-blue-500"
-                        value={formData.pickupWarehouse}
-                        onChange={(e) => handleFormChange('pickupWarehouse', e.target.value)}
-                     >
-                        <option value="">Select Warehouse...</option>
-                        <option value="WH-CA-01">California Hub (LA)</option>
-                        <option value="WH-NY-02">New York East Dist</option>
-                        <option value="WH-TX-03">Texas Central (Austin)</option>
-                     </select>
-                 </div>
-             )}
-        </div>
-
-        {/* Item List Section */}
-        <div className="flex-1 overflow-y-auto p-6 bg-white space-y-4">
-            <div className="flex items-center justify-between mb-2">
-                <h3 className="text-xs font-black text-slate-400 uppercase tracking-widest flex items-center gap-2">
-                    <PackageCheck className="w-4 h-4" /> Line Items ({items.length})
-                </h3>
-                <button 
-                    onClick={onAddProduct}
-                    className="flex items-center gap-1 text-[10px] font-black text-blue-600 bg-blue-50 px-3 py-1.5 rounded-lg hover:bg-blue-100 transition-colors"
-                >
-                    <Plus className="w-3 h-3" /> Add Product
-                </button>
-            </div>
-            
-            {items.length === 0 ? (
-                <div className="text-center p-8 border-2 border-dashed border-slate-100 rounded-2xl">
-                    <p className="text-slate-400 text-xs font-bold">No items in this order.</p>
                 </div>
-            ) : (
-                items.map((item) => {
-                    const isParent = !item.isAccessory;
-                    const canSwap = isParent && item.candidates && item.candidates.length > 0;
-                    
-                    return (
-                        <div key={item.id} className={`flex gap-3 p-3 rounded-2xl border transition-all ${
-                            isParent ? 'bg-white border-slate-200 shadow-sm' : 'bg-slate-50 border-transparent ml-8 opacity-80'
-                        }`}>
-                            <div className="w-12 h-12 rounded-lg bg-slate-100 shrink-0 overflow-hidden">
-                                {item.imageUrl && <img src={item.imageUrl} className="w-full h-full object-cover" />}
-                            </div>
-                            <div className="flex-1 min-w-0">
-                                <div className="flex justify-between items-start">
-                                    <div>
-                                        <p className="text-xs font-bold text-slate-800 truncate leading-tight">{item.displayName}</p>
-                                        <p className="text-[10px] font-mono text-slate-400 mt-0.5">{item.itemCode}</p>
-                                    </div>
-                                    {!item.isAutoAdded && (
-                                        <button onClick={() => onRemoveItem(item.id)} className="text-slate-300 hover:text-red-500 transition-colors p-1">
-                                            <Trash2 className="w-3.5 h-3.5" />
-                                        </button>
-                                    )}
+                <div className="space-y-1">
+                    <label className="text-sm font-bold text-slate-700 flex items-center gap-1"><span className="text-red-500">*</span> Phone Number</label>
+                    <input 
+                        className="w-full bg-white border border-slate-200 rounded-lg px-4 py-2.5 text-sm font-bold text-slate-800 focus:outline-none focus:border-blue-500 shadow-sm"
+                        value={formData.recipientPhone || ''}
+                        onChange={(e) => handleFormChange('recipientPhone', e.target.value)}
+                    />
+                </div>
+            </div>
+        )}
+
+        {/* Delivery Options (Only if Delivery) */}
+        {formData.shippingMethod === ShippingMethod.DELIVERY && (
+            <div className="space-y-2">
+                <label className="text-sm font-bold text-slate-700 flex items-center gap-1"><span className="text-red-500">*</span> Delivery Options</label>
+                <div className="flex flex-wrap gap-3">
+                    {['Standard', 'Tailgate', 'Crane', 'Hand Unload'].map(opt => {
+                        const isSelected = (formData.deliveryOption || 'Standard') === opt;
+                        return (
+                            <button
+                                key={opt}
+                                onClick={() => handleFormChange('deliveryOption', opt)}
+                                className={`flex items-center gap-2 px-4 py-2 rounded-lg border text-sm font-bold transition-all shadow-sm ${
+                                    isSelected 
+                                    ? 'border-blue-600 bg-white text-slate-800' 
+                                    : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50'
+                                }`}
+                            >
+                                <div className={`w-4 h-4 rounded-full border-2 flex items-center justify-center ${isSelected ? 'border-blue-600' : 'border-slate-300'}`}>
+                                    {isSelected && <div className="w-2 h-2 bg-blue-600 rounded-full"></div>}
                                 </div>
-                                <div className="mt-2 flex items-center justify-between">
-                                    <div className="flex items-center gap-2 bg-slate-50 rounded-lg px-2 py-1 border border-slate-100">
-                                        <span className="text-[10px] font-black text-slate-400 uppercase">Qty</span>
-                                        <input 
-                                            type="number" 
-                                            min="1"
-                                            value={item.purchasedQty || 0}
-                                            onChange={(e) => onUpdateItem(item.id, parseInt(e.target.value) || 0)}
-                                            className="w-12 bg-transparent text-xs font-bold text-slate-800 text-center focus:outline-none"
-                                        />
-                                    </div>
-                                    
-                                    {canSwap && (
-                                        <button 
-                                            onClick={() => handleItemClick(item)}
-                                            className="flex items-center gap-1 text-[10px] font-black text-blue-600 bg-blue-50 px-2 py-1.5 rounded-lg hover:bg-blue-100 transition-colors"
-                                        >
-                                            <RefreshCw className="w-3 h-3" /> Swap / Match
-                                        </button>
-                                    )}
-                                </div>
-                            </div>
-                        </div>
-                    );
-                })
-            )}
-        </div>
+                                <Truck className="w-4 h-4 text-slate-500" />
+                                {opt}
+                            </button>
+                        );
+                    })}
+                </div>
+            </div>
+        )}
     </div>
   );
 
@@ -322,20 +392,30 @@ const OrderDetailsModal: React.FC<OrderDetailsModalProps> = ({
 
   return (
     <div className="fixed inset-0 z-[100] flex items-end md:items-center justify-center bg-slate-900/60 backdrop-blur-sm animate-fadeIn p-0 md:p-4">
-      <div className="bg-white w-full max-w-lg md:rounded-[2.5rem] rounded-t-[2.5rem] shadow-2xl overflow-hidden flex flex-col h-[90vh] md:h-[85vh] animate-slideUp">
+      <div className="bg-white w-full max-w-3xl md:rounded-[2rem] rounded-t-[2.5rem] shadow-2xl flex flex-col max-h-[90vh] animate-slideUp">
         
         {/* Main Modal Header */}
-        <div className="p-4 md:p-6 bg-white border-b border-slate-100 flex items-center justify-between shrink-0 z-10">
+        <div className="p-4 md:p-6 bg-white border-b border-slate-100 flex items-center justify-between shrink-0 z-10 md:rounded-t-[2rem] rounded-t-[2.5rem]">
           <div>
              <h2 className="text-lg font-black text-slate-800">Order Details</h2>
              <p className="text-xs text-slate-400 font-bold mt-0.5">PO: {formData.poNumber || 'Unassigned'}</p>
           </div>
-          <button onClick={onClose} className="p-2 bg-slate-50 rounded-full text-slate-400 hover:text-slate-800 hover:bg-slate-100 transition-all"><X className="w-5 h-5" /></button>
+          <button onClick={handleSave} className="p-2 bg-slate-50 rounded-full text-slate-400 hover:text-slate-800 hover:bg-slate-100 transition-all"><X className="w-5 h-5" /></button>
         </div>
 
         {/* Content Area */}
-        <div className="flex-1 overflow-hidden relative bg-slate-50">
-            {view === 'OVERVIEW' ? renderOverview() : renderSwap()}
+        <div className="flex-1 overflow-y-auto relative bg-slate-50">
+            {renderOverview()}
+        </div>
+
+        {/* Footer Action */}
+        <div className="p-4 md:p-6 bg-white border-t border-slate-100 shrink-0 md:rounded-b-[2rem]">
+            <button 
+                onClick={handleSave}
+                className="w-full py-3.5 bg-blue-600 hover:bg-blue-700 text-white font-black uppercase tracking-widest text-sm rounded-xl shadow-lg shadow-blue-600/20 transition-all"
+            >
+                Save Changes
+            </button>
         </div>
 
       </div>

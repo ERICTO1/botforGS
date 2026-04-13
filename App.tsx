@@ -5,6 +5,8 @@ import ChatInterface from './components/ChatInterface';
 import { recalculateItemStatus, createAccessoryLineItem, getInventoryItem } from './services/inventoryService';
 import Dashboard from './components/Dashboard';
 import ProjectDetail from './components/ProjectDetail';
+import QuotationRequest from './components/QuotationRequest';
+import BotPage from './components/BotPage';
 import { X } from 'lucide-react';
 
 // Mock projects data needs to be accessible here to find selected projects
@@ -47,20 +49,49 @@ const MOCK_PROJECTS: ProjectData[] = [
     isDemo: true,
     isNew: true,
     user: '-'
+  },
+  {
+    id: '5',
+    address: '999 Already Ordered Ave, Demo City, DC 99999, Australia',
+    status: 'Ordered',
+    date: '10 Apr 2026',
+    image: 'https://picsum.photos/seed/map5/400/300',
+    user: 'Jane Smith',
+    alreadyOrdered: true
   }
 ];
 
 const App: React.FC = () => {
+  const [currentView, setCurrentView] = useState<'Dashboard' | 'Sale Bot'>('Dashboard');
   const [isBotOpen, setIsBotOpen] = useState(false);
+  const [isQuotationOpen, setIsQuotationOpen] = useState(false);
   const [selectedProject, setSelectedProject] = useState<ProjectData | null>(null);
   const [botSelectedProjects, setBotSelectedProjects] = useState<ProjectData[]>([]);
   const [customerInfo, setCustomerInfo] = useState<CustomerInfo | null>(null);
   const [lineItems, setLineItems] = useState<LineItem[]>([]);
 
+  const [currentChatId, setCurrentChatId] = useState<string>('new');
+
+  const checkAlreadyOrdered = (projects: ProjectData[], onProceed: () => void) => {
+      const alreadyOrderedProjects = projects.filter(p => p.alreadyOrdered);
+      if (alreadyOrderedProjects.length > 0) {
+          const msg = alreadyOrderedProjects.length === 1 
+              ? `The project at "${alreadyOrderedProjects[0].address}" has already been ordered.\n\nDo you want to order again?`
+              : `${alreadyOrderedProjects.length} selected projects have already been ordered.\n\nDo you want to order again?`;
+              
+          if (!window.confirm(msg)) {
+              return;
+          }
+      }
+      onProceed();
+  };
+
   const handleOrder = (selectedIds: string[]) => {
       const projects = MOCK_PROJECTS.filter(p => selectedIds.includes(p.id));
-      setBotSelectedProjects(projects);
-      setIsBotOpen(true);
+      checkAlreadyOrdered(projects, () => {
+          setBotSelectedProjects(projects);
+          setIsQuotationOpen(true);
+      });
   };
 
   // Handlers for data updates
@@ -154,32 +185,97 @@ const App: React.FC = () => {
     setLineItems([]);
   };
 
+  const handleNewChat = () => {
+      setBotSelectedProjects([]);
+      handleResetAll();
+      setCurrentChatId(Date.now().toString());
+  };
+
+  const handleSelectHistory = (id: string) => {
+      setBotSelectedProjects([]);
+      handleResetAll();
+      setCurrentChatId(id);
+  };
+
+  const chatNode = (
+    <ChatInterface 
+      key={botSelectedProjects.map(p => p.id).join(',') + '-' + currentChatId}
+      defaultInfo={{}}
+      customerInfo={customerInfo}
+      lineItems={lineItems}
+      selectedProjects={botSelectedProjects}
+      onInfoSubmit={handleInfoSubmit}
+      onItemsExtracted={handleItemsExtracted}
+      onRemoveItem={handleRemoveItem}
+      onUpdateItem={handleUpdateItem}
+      onDownloadPdf={(meta) => console.log('Download', meta)}
+      onResetAll={handleResetAll}
+      onUpdateOrderEntry={handleUpdateOrderEntry}
+      onSwapItem={handleSwapItem}
+    />
+  );
+
   return (
     <div className="h-screen w-full relative">
       {/* Main Content */}
-      {selectedProject ? (
+      {isQuotationOpen ? (
+        <QuotationRequest onCancel={() => setIsQuotationOpen(false)} />
+      ) : selectedProject ? (
         <ProjectDetail 
           project={selectedProject} 
           onBack={() => setSelectedProject(null)} 
           onOrder={(id) => handleOrder([id])}
         />
+      ) : currentView === 'Sale Bot' ? (
+        <BotPage 
+          onNavChange={(tab) => {
+             if (tab === 'Dashboard' || tab === 'Projects') {
+                 setCurrentView('Dashboard');
+             } else {
+                 setCurrentView('Sale Bot');
+             }
+          }}
+          chatComponent={chatNode}
+          onNewChat={handleNewChat}
+          onSelectHistory={handleSelectHistory}
+        />
       ) : (
         <Dashboard 
-          onOpenBot={() => {
-              setBotSelectedProjects([]);
-              setIsBotOpen(true);
+          onNavChange={(tab) => {
+             if (tab === 'Sale Bot') {
+                 setCurrentView('Sale Bot');
+             } else {
+                 setCurrentView('Dashboard');
+             }
+          }}
+          onOpenBot={(selectedIds) => {
+              if (selectedIds && selectedIds.length > 0) {
+                  const projects = MOCK_PROJECTS.filter(p => selectedIds.includes(p.id));
+                  checkAlreadyOrdered(projects, () => {
+                      setBotSelectedProjects(projects);
+                      setIsBotOpen(true);
+                  });
+              } else {
+                  setBotSelectedProjects([]);
+                  setIsBotOpen(true);
+              }
           }} 
           onProjectClick={(project) => setSelectedProject(project)}
           onOrder={handleOrder}
         />
       )}
 
-      {/* Bot Overlay */}
-      {isBotOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 sm:p-6">
-          <div className="absolute inset-0 bg-black/40 backdrop-blur-sm animate-in fade-in duration-200" onClick={() => setIsBotOpen(false)} />
+      {/* Bot Overlay (Right Drawer) - Only show when NOT in Sale Bot view */}
+      {isBotOpen && currentView !== 'Sale Bot' && (
+        <div className="fixed inset-0 z-50 flex justify-end">
+          {/* Backdrop */}
+          <div 
+            className="absolute inset-0 bg-black/20 backdrop-blur-sm animate-in fade-in duration-300" 
+            onClick={() => setIsBotOpen(false)} 
+          />
           
-          <div className="relative w-full max-w-4xl h-[85vh] bg-white rounded-2xl shadow-2xl flex flex-col overflow-hidden animate-in zoom-in-95 duration-200 border border-white/20">
+          {/* Drawer Panel */}
+          <div className="relative w-[75vw] h-full bg-white shadow-2xl flex flex-col overflow-hidden animate-in slide-in-from-right duration-300 border-l border-gray-200">
             {/* Header for Bot View */}
             <div className="bg-white border-b border-gray-200 px-4 py-3 flex items-center justify-between shadow-sm z-10 shrink-0">
               <div className="flex items-center gap-2">
@@ -197,21 +293,7 @@ const App: React.FC = () => {
 
             {/* Existing Chat Interface */}
             <div className="flex-1 overflow-hidden relative">
-              <ChatInterface 
-                key={botSelectedProjects.map(p => p.id).join(',')} // Force re-mount if selection changes
-                defaultInfo={{}}
-                customerInfo={customerInfo}
-                lineItems={lineItems}
-                selectedProjects={botSelectedProjects}
-                onInfoSubmit={handleInfoSubmit}
-                onItemsExtracted={handleItemsExtracted}
-                onRemoveItem={handleRemoveItem}
-                onUpdateItem={handleUpdateItem}
-                onDownloadPdf={(meta) => console.log('Download', meta)}
-                onResetAll={handleResetAll}
-                onUpdateOrderEntry={handleUpdateOrderEntry}
-                onSwapItem={handleSwapItem}
-              />
+              {chatNode}
             </div>
           </div>
         </div>

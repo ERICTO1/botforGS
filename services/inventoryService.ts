@@ -1,70 +1,82 @@
 
 import { ItemStatus, LineItem, RawExtractedItem, MatchOption } from '../types';
 
-const MOCK_INVENTORY: Record<string, { code: string; name: string; stock: number; image: string; accessories?: string[] }> = {
+const DEFAULT_IMG = 'https://images.unsplash.com/photo-1508514177221-188b1cf16e9d?auto=format&fit=crop&w=200&h=200';
+
+const MOCK_INVENTORY: Record<string, { code: string; name: string; stock: number; image: string; accessories?: string[]; price: number }> = {
   'longi-450': { 
     code: 'SOL-PNL-450W', 
     name: 'Longi Hi-MO 5 450W Mono Panel', 
     stock: 200,
-    image: 'https://images.unsplash.com/photo-1509391366360-2e959784a276?auto=format&fit=crop&q=80&w=200&h=200'
+    image: DEFAULT_IMG,
+    price: 185.50
   },
   'jinko-545': { 
     code: 'SOL-JK-545W', 
     name: 'Jinko Tiger Neo 545W Panel', 
     stock: 100,
-    image: 'https://images.unsplash.com/photo-1613665813446-82a78c468a1d?auto=format&fit=crop&q=80&w=200&h=200'
+    image: DEFAULT_IMG,
+    price: 210.00
   },
   'jinko-550': { 
     code: 'SOL-JK-550W', 
     name: 'Jinko Tiger Neo 550W Panel', 
     stock: 45,
-    image: 'https://images.unsplash.com/photo-1613665813446-82a78c468a1d?auto=format&fit=crop&q=80&w=200&h=200'
+    image: DEFAULT_IMG,
+    price: 215.00
   },
   'jinko-580': { 
     code: 'SOL-JK-580W', 
     name: 'Jinko Tiger Neo 580W (High Efficiency)', 
     stock: 12,
-    image: 'https://images.unsplash.com/photo-1613665813446-82a78c468a1d?auto=format&fit=crop&q=80&w=200&h=200'
+    image: DEFAULT_IMG,
+    price: 240.00
   },
   'growatt-5k': { 
     code: 'INV-HYB-5KW', 
     name: 'Growatt 5kW Hybrid Inverter', 
     stock: 15,
-    image: 'https://images.unsplash.com/photo-1558449028-b53a39d100fc?auto=format&fit=crop&q=80&w=200&h=200',
-    accessories: ['wifi-module']
+    image: DEFAULT_IMG,
+    accessories: ['wifi-module'],
+    price: 850.00
   },
   'growatt-10k': { 
     code: 'INV-HYB-10KW', 
     name: 'Growatt 10kW Hybrid Inverter', 
     stock: 8,
-    image: 'https://images.unsplash.com/photo-1558449028-b53a39d100fc?auto=format&fit=crop&q=80&w=200&h=200',
-    accessories: ['wifi-module']
+    image: DEFAULT_IMG,
+    accessories: ['wifi-module'],
+    price: 1450.00
   },
   'battery-10k': { 
     code: 'BAT-LFP-10K', 
     name: 'Pylontech LiFePO4 10kWh Battery', 
     stock: 5,
-    image: 'https://plus.unsplash.com/premium_photo-1682145930967-3392e2124cb1?auto=format&fit=crop&q=80&w=200&h=200',
-    accessories: ['cable-set', 'bracket-kit']
+    image: DEFAULT_IMG,
+    accessories: ['cable-set', 'bracket-kit'],
+    price: 3200.00
   },
   // Accessories
   'wifi-module': {
     code: 'ACC-WIFI-01',
     name: 'ShineWiFi-X Module',
     stock: 999,
-    image: 'https://images.unsplash.com/photo-1544197150-b99a580bbc7c?auto=format&fit=crop&q=80&w=100&h=100'
+    image: DEFAULT_IMG,
+    price: 25.00
   },
   'cable-set': {
     code: 'ACC-CABLE-HV',
     name: 'HV Battery Cable Set (2m)',
     stock: 999,
-    image: 'https://images.unsplash.com/photo-1544724569-5f546fd6dd2d?auto=format&fit=crop&q=80&w=100&h=100'
+    image: DEFAULT_IMG,
+    price: 45.00
   },
   'bracket-kit': {
     code: 'ACC-BRACKET-05',
     name: 'Rack Mount Bracket Kit',
     stock: 999,
-    image: 'https://images.unsplash.com/photo-1581092921461-eab62e97a780?auto=format&fit=crop&q=80&w=100&h=100'
+    image: DEFAULT_IMG,
+    price: 85.00
   }
 };
 
@@ -97,33 +109,43 @@ const findCandidates = (query: string): MatchOption[] => {
       // Scramble scores slightly for demo variety
       score += Math.floor(Math.random() * 10);
       
-      return { ...item, score: Math.min(score, 99) };
+      return { ...item, score };
     })
-    .filter(item => item.score > 20)
+    .filter(item => item.score > 25) // Increase threshold to avoid hard matching unrelated terms
     .sort((a, b) => b.score - a.score)
     .slice(0, 3);
 };
 
 export const enrichLineItem = (rawItem: RawExtractedItem): LineItem => {
-  const candidates = findCandidates(rawItem.purchasedName);
-  const bestMatch = candidates[0];
   const qty = rawItem.purchasedQty;
   
   const baseItem = {
     id: crypto.randomUUID(),
     purchasedName: rawItem.purchasedName,
     purchasedQty: qty,
-    candidates: candidates
+    candidates: []
   };
 
-  if (!bestMatch) {
+  // HARDCODED DEMO LOGIC
+  let bestMatchKey = null;
+  if (rawItem.purchasedName === 'Longi Hi-MO 5 450W') {
+      bestMatchKey = 'longi-450';
+  } else if (rawItem.purchasedName === 'Growatt 5kW Inverter') {
+      bestMatchKey = 'growatt-5k';
+  } else if (rawItem.purchasedName === 'Battery 10k') {
+      bestMatchKey = 'battery-10k';
+  }
+  // 'Jinko 999W (Not Exist)' will leave bestMatchKey as null
+
+  if (!bestMatchKey || !MOCK_INVENTORY[bestMatchKey]) {
     return {
       ...baseItem,
       itemStatus: ItemStatus.UNKNOWN_ITEM,
-      displayName: rawItem.purchasedName || "Manual Check Required",
+      displayName: "Cannot match this product",
     };
   }
 
+  const bestMatch = MOCK_INVENTORY[bestMatchKey];
   const stock = bestMatch.stock;
   let status = ItemStatus.AVAILABLE;
   if (qty === undefined || isNaN(qty as number)) status = ItemStatus.QTY_MISSING;
@@ -136,6 +158,8 @@ export const enrichLineItem = (rawItem: RawExtractedItem): LineItem => {
     stockAvailable: stock,
     imageUrl: bestMatch.image,
     itemStatus: status,
+    unitPrice: bestMatch.price,
+    totalPrice: qty ? qty * bestMatch.price : 0
   };
 };
 
@@ -155,7 +179,9 @@ export const createAccessoryLineItem = (accessoryKey: string, parentItem: LineIt
         poReference: parentItem.poReference,
         isAccessory: true,
         parentId: parentItem.id,
-        isAutoAdded: true
+        isAutoAdded: true,
+        unitPrice: invItem.price,
+        totalPrice: parentItem.purchasedQty ? parentItem.purchasedQty * invItem.price : 0
     };
 };
 

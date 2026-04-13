@@ -1,5 +1,5 @@
 import React from 'react';
-import { MoreVertical, ShoppingCart, RefreshCw, MapPin, Clock, User } from 'lucide-react';
+import { MoreVertical, ShoppingCart, RefreshCw, MapPin, Clock, User, MessageSquare } from 'lucide-react';
 import { ProjectData } from '../types';
 
 interface ProjectCardProps {
@@ -7,9 +7,10 @@ interface ProjectCardProps {
   selected?: boolean;
   onSelect?: (id: string) => void;
   onOrder?: (id: string) => void;
+  onOpenBot?: (id: string) => void;
 }
 
-const ProjectCard: React.FC<ProjectCardProps> = ({ project, selected, onSelect, onOrder }) => {
+const ProjectCard: React.FC<ProjectCardProps> = ({ project, selected, onSelect, onOrder, onOpenBot }) => {
   const getStatusColor = (status: string) => {
     switch (status) {
       case 'Sent': return 'bg-orange-100 text-orange-600';
@@ -93,6 +94,16 @@ const ProjectCard: React.FC<ProjectCardProps> = ({ project, selected, onSelect, 
             <button className="flex items-center gap-1 text-xs text-teal-600 font-medium hover:text-teal-700">
               <RefreshCw size={14} />
               Rebates
+            </button>
+            <button 
+              onClick={(e) => {
+                e.stopPropagation();
+                onOpenBot?.(project.id);
+              }}
+              className="flex items-center gap-1 text-xs text-teal-600 font-medium hover:text-teal-700"
+            >
+              <MessageSquare size={14} />
+              Bot
             </button>
           </div>
           <button className="text-gray-400 hover:text-gray-600">

@@ -29,6 +29,9 @@ export interface OrderEntry {
   pickupWarehouse?: string;
   requestedDate: string;
   pickupTimeSlot?: string;
+  projectName?: string; // Explicit field for Project Name
+  shipFromWarehouse?: string;
+  deliveryOption?: string;
 }
 
 export interface MatchOption {
@@ -38,6 +41,7 @@ export interface MatchOption {
   score: number;
   stock: number;
   accessories?: string[]; // List of inventory codes for accessories
+  price?: number;
 }
 
 export interface LineItem {
@@ -55,6 +59,9 @@ export interface LineItem {
   isAccessory?: boolean;
   parentId?: string; // ID of the parent line item
   isAutoAdded?: boolean; // True if added by system logic, False if extracted from user input
+  // Pricing
+  unitPrice?: number;
+  totalPrice?: number;
 }
 
 export interface ProjectData {
@@ -67,6 +74,7 @@ export interface ProjectData {
   tags?: string[];
   isDemo?: boolean;
   isNew?: boolean;
+  alreadyOrdered?: boolean;
 }
 
 export interface CustomerInfo {
@@ -87,7 +95,7 @@ export interface RawExtractedItem {
   purchasedQty?: number;
 }
 
-export type MessageComponentType = 'TEXT' | 'FORM' | 'SUMMARY' | 'CONFIRMATION' | 'RESULT_LIST' | 'SALE_ORDER' | 'INTENT_START';
+export type MessageComponentType = 'TEXT' | 'FORM' | 'SUMMARY' | 'CONFIRMATION' | 'RESULT_LIST' | 'SALE_ORDER' | 'INTENT_START' | 'PROJECT_SELECTION' | 'PROJECT_PICKER';
 
 export interface ChatMessage {
   id: string;

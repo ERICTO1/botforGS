@@ -1,7 +1,7 @@
 
 import React, { useState, useRef, useEffect } from 'react';
 import { ChatMessage, LineItem, CustomerInfo, SaleOrderMeta, ShippingMethod, MessageComponentType, OrderEntry, MatchOption, BatchAnalysisResult, ItemStatus, ProjectData } from '../types';
-import { Send, Paperclip, Bot, User, Loader2, FileUp, RotateCcw, X, Quote, Sparkles, Keyboard, MapPin } from 'lucide-react';
+import { Send, Paperclip, Bot, User, Loader2, FileUp, RotateCcw, X, Quote, Sparkles, Keyboard, MapPin, Search } from 'lucide-react';
 import { parseUserMessage } from '../services/geminiService';
 import { enrichLineItem } from '../services/inventoryService';
 import InfoForm from './InfoForm';
@@ -9,7 +9,72 @@ import OrderCard from './OrderCard';
 import SaleOrderCard from './SaleOrderCard';
 import PdfPreviewModal from './PdfPreviewModal';
 import OrderDetailsModal from './OrderDetailsModal';
+import ProductSwapModal from './ProductSwapModal';
+import PaymentModal from './PaymentModal';
 import OrderConfirmationModal from './OrderConfirmationModal';
+
+const ProjectPickerCard = ({ onConfirm, isSubmitted }: { onConfirm: (projects: any[]) => void, isSubmitted: boolean }) => {
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  const mockProjects = [
+      { id: '1', address: '123 Mock Street, Solar City', date: '08 Dec 2025', status: 'Sent' },
+      { id: '2', address: '456 Panel Ave, Light District', date: '10 Jan 2026', status: 'In Progress' },
+      { id: '3', address: '789 Energy Blvd, Sun Town', date: '15 Feb 2026', status: 'Signed' }
+  ];
+
+  const toggleSelect = (id: string) => {
+      if (isSubmitted) return;
+      setSelectedIds(prev => prev.includes(id) ? prev.filter(i => i !== id) : [...prev, id]);
+  };
+
+  return (
+      <div className="bg-white rounded-2xl shadow-sm border border-slate-200 w-full max-w-sm overflow-hidden animate-fadeIn">
+          <div className="p-3 border-b border-slate-100 bg-slate-50">
+              <p className="text-xs font-bold text-slate-700 mb-2">Select projects to start</p>
+              <div className="relative">
+                  <Search className="w-3.5 h-3.5 absolute left-2.5 top-2.5 text-slate-400" />
+                  <input type="text" placeholder="Search projects..." className="w-full bg-white border border-slate-200 rounded-lg pl-8 pr-3 py-1.5 text-xs focus:outline-none focus:border-blue-500" />
+              </div>
+          </div>
+          <div className="max-h-48 overflow-y-auto p-2 space-y-1">
+              {mockProjects.map(p => (
+                  <div 
+                      key={p.id}
+                      onClick={() => toggleSelect(p.id)}
+                      className={`w-full flex items-center gap-3 p-2 rounded-lg border transition-colors cursor-pointer ${selectedIds.includes(p.id) ? 'bg-blue-50 border-blue-200' : 'hover:bg-slate-50 border-transparent'}`}
+                  >
+                      <input 
+                          type="checkbox" 
+                          checked={selectedIds.includes(p.id)} 
+                          readOnly 
+                          className="rounded border-slate-300 text-blue-600 focus:ring-blue-500 w-4 h-4 shrink-0" 
+                      />
+                      <div className="flex-1 text-left min-w-0">
+                          <p className={`text-sm font-medium truncate ${selectedIds.includes(p.id) ? 'text-blue-800' : 'text-slate-900'}`}>{p.address}</p>
+                          <div className="flex items-center gap-2 mt-1">
+                              <span className="text-[10px] px-1.5 py-0.5 rounded font-medium bg-slate-100 text-slate-600">{p.status}</span>
+                              <span className="text-[10px] text-slate-400">{p.date}</span>
+                          </div>
+                      </div>
+                  </div>
+              ))}
+          </div>
+          {!isSubmitted && (
+              <div className="p-3 bg-slate-50 border-t border-slate-100">
+                  <button
+                      onClick={() => {
+                          const selected = mockProjects.filter(p => selectedIds.includes(p.id));
+                          onConfirm(selected);
+                      }}
+                      disabled={selectedIds.length === 0}
+                      className="w-full bg-blue-600 hover:bg-blue-700 disabled:bg-slate-300 disabled:cursor-not-allowed text-white text-sm font-medium py-2 rounded-lg transition-colors shadow-sm"
+                  >
+                      Proceed with {selectedIds.length} project{selectedIds.length !== 1 ? 's' : ''}
+                  </button>
+              </div>
+          )}
+      </div>
+  );
+};
 
 interface ChatInterfaceProps {
   defaultInfo: Partial<CustomerInfo>;
@@ -83,8 +148,15 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
       {
         id: 'welcome',
         role: 'assistant',
-        content: 'Hello! I can help you process a new sales order. Please upload a PO file or describe your order.',
+        content: 'Hi! I am the OSW Sale Admin Bot. How can I help you today? Do you want to process a new order, check an existing one, or upload a PO file?',
         timestamp: Date.now(),
+      },
+      {
+        id: 'project-picker',
+        role: 'assistant',
+        content: '',
+        componentType: 'PROJECT_PICKER',
+        timestamp: Date.now() + 10,
       }
     ];
   };
@@ -92,6 +164,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
   const [isInfoConfirmed, setIsInfoConfirmed] = useState(!!customerInfo);
   const [isOrderSubmitted, setIsOrderSubmitted] = useState(false);
   const [messages, setMessages] = useState<ChatMessage[]>(getInitialMessages());
+  const [internalSelectedProjects, setInternalSelectedProjects] = useState<ProjectData[]>(selectedProjects || []);
   const [inputText, setInputText] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [selectedImage, setSelectedImage] = useState<string | null>(null);
@@ -115,13 +188,36 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
       entry: OrderEntry;
       initialItemToSwap?: LineItem;
   } | null>(null);
+  const [isSwappingItem, setIsSwappingItem] = useState<LineItem | null>(null);
+  const [showPaymentModal, setShowPaymentModal] = useState(false);
+  const [pendingPayment, setPendingPayment] = useState(false);
+  const [paymentTimeLeft, setPaymentTimeLeft] = useState(0);
+  const [mergeOrders, setMergeOrders] = useState(false);
   
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
+    let timer: NodeJS.Timeout;
+    if (pendingPayment && paymentTimeLeft > 0) {
+      timer = setInterval(() => {
+        setPaymentTimeLeft((prev) => prev - 1);
+      }, 1000);
+    } else if (pendingPayment && paymentTimeLeft === 0) {
+      // Optional: Handle timer expiration, maybe cancel the order or reset state
+    }
+    return () => clearInterval(timer);
+  }, [pendingPayment, paymentTimeLeft]);
+
+  useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages, lineItems.length]);
+
+  const handleChangeShippingMethod = (entryId: string, method: ShippingMethod) => {
+      if (onUpdateOrderEntry) {
+          onUpdateOrderEntry(entryId, { shippingMethod: method });
+      }
+  };
 
   const handleReset = () => {
     if (!isOrderSubmitted && lineItems.length > 0) {
@@ -135,12 +231,21 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
     setHasShownForm(false);
     setFormDefaults(defaultInfo);
     setAnalysisResult(null);
+    setPendingPayment(false);
+    setPaymentTimeLeft(0);
     setMessages([
         {
           id: 'welcome',
           role: 'assistant',
-          content: 'Hello! I can help you process a new sales order. Please upload a PO file or describe your order.',
+          content: 'Hi! I am the OSW Sale Admin Bot. How can I help you today? Do you want to process a new order, check an existing one, or upload a PO file?',
           timestamp: Date.now(),
+        },
+        {
+          id: 'project-picker',
+          role: 'assistant',
+          content: '',
+          componentType: 'PROJECT_PICKER',
+          timestamp: Date.now() + 10,
         }
     ]);
     setInputText('');
@@ -155,7 +260,46 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
       onInfoSubmit(data);
   };
 
-  const handleSimulateUpload = () => {
+  const handlePickProjectsFromChat = (projects: any[]) => {
+      const pickedProjects: ProjectData[] = projects.map(p => ({
+          id: p.id,
+          address: p.address,
+          status: p.status as any,
+          date: p.date,
+          image: `https://picsum.photos/seed/map${p.id}/400/300`
+      }));
+      
+      setInternalSelectedProjects(pickedProjects);
+      
+      const userText = pickedProjects.length === 1
+          ? `I want to order for project: ${pickedProjects[0].address}`
+          : `I want to order for ${pickedProjects.length} selected projects.`;
+
+      setMessages(prev => [
+          ...prev,
+          {
+              id: crypto.randomUUID(),
+              role: 'user',
+              content: userText,
+              timestamp: Date.now()
+          },
+          {
+              id: crypto.randomUUID(),
+              role: 'assistant',
+              content: `Great! I've loaded the project details. Please review and confirm to proceed.`,
+              timestamp: Date.now() + 10
+          },
+          {
+              id: crypto.randomUUID(),
+              role: 'assistant',
+              content: '',
+              componentType: 'PROJECT_SELECTION',
+              timestamp: Date.now() + 20
+          }
+      ]);
+  };
+
+  const handleSimulateUpload = (shouldMerge: boolean = false) => {
     if (isLoading || isOrderSubmitted) return;
     
     setIsLoading(true);
@@ -163,24 +307,43 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
         let orderEntries: OrderEntry[] = [];
         let isProjectSelection = false;
 
-        if (selectedProjects && selectedProjects.length > 0) {
+        if (internalSelectedProjects && internalSelectedProjects.length > 0) {
             isProjectSelection = true;
-            orderEntries = selectedProjects.map((project) => ({
-                id: crypto.randomUUID(),
-                poNumber: `PO-${new Date().getFullYear()}-${project.id.padStart(3, '0')}`,
-                productDescription: '10x Jinko Tiger Panels, 5x Growatt Inverters',
-                shippingMethod: ShippingMethod.DELIVERY,
-                requestedDate: '2025-06-15',
-                recipientName: project.user || 'Unknown Recipient',
-                recipientPhone: '555-0100',
-                shippingAddress: project.address
-            }));
+            
+            if (shouldMerge) {
+                // Merge all selected projects into a single order entry
+                orderEntries = [{
+                    id: crypto.randomUUID(),
+                    poNumber: `PO-${new Date().getFullYear()}-MERGED`,
+                    productDescription: 'Merged Order for Multiple Projects',
+                    projectName: `Merged: ${internalSelectedProjects.length} Projects`, // Special naming for merged order
+                    shippingMethod: ShippingMethod.DELIVERY,
+                    requestedDate: '2025-06-15',
+                    recipientName: internalSelectedProjects[0].user || 'Merged Recipient',
+                    recipientPhone: '555-0100',
+                    shippingAddress: internalSelectedProjects[0].address // Default to first project's address
+                }];
+            } else {
+                // Create individual orders for each project
+                orderEntries = internalSelectedProjects.map((project) => ({
+                    id: crypto.randomUUID(),
+                    poNumber: `PO-${new Date().getFullYear()}-${project.id.padStart(3, '0')}`,
+                    productDescription: '10x Jinko Tiger Panels, 5x Growatt Inverters',
+                    projectName: project.address.split(',')[0], // Use first part of address as simple project name
+                    shippingMethod: ShippingMethod.DELIVERY,
+                    requestedDate: '2025-06-15',
+                    recipientName: project.user || 'Unknown Recipient',
+                    recipientPhone: '555-0100',
+                    shippingAddress: project.address
+                }));
+            }
         } else {
              orderEntries = [
               {
                 id: crypto.randomUUID(),
                 poNumber: 'PO-2025-ALPHA',
                 productDescription: '10x Jinko Tiger Panels, 5x Growatt Inverters',
+                projectName: 'Alpha Logistics Center', // Default project name
                 shippingMethod: ShippingMethod.DELIVERY,
                 requestedDate: '2025-06-15',
                 recipientName: 'Alice Logistics',
@@ -205,10 +368,19 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
              const mockRawItems = [
                 { purchasedName: 'Longi Hi-MO 5 450W', purchasedQty: 10 }, 
                 { purchasedName: 'Growatt 5kW Inverter', purchasedQty: 2 }, 
+                { purchasedName: 'Jinko 999W (Not Exist)', purchasedQty: 5 }, // Will map to UNKNOWN_ITEM
+                { purchasedName: 'Battery 10k', purchasedQty: 50 }, // Will map to CHECK_REQUIRED (low stock)
             ];
             
+            // If merging, we multiply the quantities by the number of projects selected
+            // to simulate aggregating the BOMs
+            const multiplier = shouldMerge ? internalSelectedProjects!.length : 1;
+
             const enriched = mockRawItems.map(raw => {
-                const item = enrichLineItem(raw);
+                const item = enrichLineItem({
+                    ...raw,
+                    purchasedQty: (raw.purchasedQty || 0) * multiplier
+                });
                 item.poReference = entry.poNumber;
                 return item;
             });
@@ -223,7 +395,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
                 id: crypto.randomUUID(),
                 role: 'user',
                 content: isProjectSelection 
-                    ? `Confirmed selection of ${selectedProjects!.length} projects.`
+                    ? `Confirmed selection of ${internalSelectedProjects!.length} projects.`
                     : '📂 Uploaded: purchase_order_scan.pdf',
                 timestamp: Date.now()
             },
@@ -298,10 +470,33 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
 
   const handleFinalizeSubmission = (analysis?: BatchAnalysisResult) => {
       setAnalysisResult(null); // Close modal if open
+      setShowPaymentModal(true);
+  };
+
+  const handlePaymentCancel = () => {
+      setShowPaymentModal(false);
+      if (!pendingPayment) {
+          setPendingPayment(true);
+          setPaymentTimeLeft(15 * 60); // 15 minutes
+      }
+  };
+
+  const handlePaymentComplete = () => {
+      setShowPaymentModal(false);
+      setPendingPayment(false);
+      setPaymentTimeLeft(0);
+      
+      setMessages(prev => [...prev, {
+          id: crypto.randomUUID(),
+          role: 'user',
+          content: 'Confirmed.',
+          timestamp: Date.now()
+      }]);
+
       setIsLoading(true);
 
       // Use provided analysis or re-run it
-      const finalAnalysis = analysis || analyzeBatch();
+      const finalAnalysis = analyzeBatch();
       const hasExceptions = finalAnalysis.exceptionIds.length > 0;
 
       setTimeout(() => {
@@ -582,7 +777,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
           }`}
         >
           <RotateCcw className="w-3.5 h-3.5" />
-          Start New Order
+          Restart
         </button>
       </header>
 
@@ -606,22 +801,19 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
           />
       )}
 
-      {activeOrderModal && onUpdateOrderEntry && onSwapItem && (
+      {activeOrderModal && onUpdateOrderEntry && (
           <OrderDetailsModal 
-             entry={activeOrderModal.entry}
-             items={lineItems.filter(i => i.poReference === activeOrderModal.entry.poNumber)}
-             initialItemToSwap={activeOrderModal.initialItemToSwap}
-             onClose={() => setActiveOrderModal(null)}
-             onUpdateEntry={(id, updates) => {
-                 onUpdateOrderEntry(id, updates);
-             }}
-             onSwapItem={(itemId, candidate) => {
-                 onSwapItem(itemId, candidate);
-             }}
-             onRemoveItem={onRemoveItem}
-             onUpdateItem={onUpdateItem}
-             onManualModification={handleManualModification}
-             onAddProduct={handleAddProductRequest}
+              entry={activeOrderModal.entry}
+              onClose={() => setActiveOrderModal(null)}
+              onUpdateEntry={onUpdateOrderEntry}
+          />
+      )}
+
+      {isSwappingItem && onSwapItem && (
+          <ProductSwapModal 
+              item={isSwappingItem}
+              onClose={() => setIsSwappingItem(null)}
+              onSwapItem={onSwapItem}
           />
       )}
 
@@ -631,27 +823,35 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
             key={msg.id}
             className={`flex w-full ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}
           >
-            <div className={`flex w-full ${msg.componentType === 'FORM' || msg.componentType === 'SUMMARY' || msg.componentType === 'SALE_ORDER' || msg.componentType === 'INTENT_START' ? 'max-w-[100%] md:max-w-[85%]' : 'max-w-[85%] md:max-w-[70%]'} gap-3 ${msg.role === 'user' ? 'flex-row-reverse' : 'flex-row'}`}>
+            <div className={`flex w-full ${msg.componentType || msg.role === 'assistant' ? 'max-w-[100%]' : 'max-w-[85%] md:max-w-[70%]'} gap-3 ${msg.role === 'user' ? 'flex-row-reverse' : 'flex-row'}`}>
               
-              <div className={`w-8 h-8 rounded-full flex items-center justify-center shrink-0 ${
-                msg.role === 'assistant' ? 'bg-blue-600 text-white' : 'bg-slate-300 text-slate-600'
-              }`}>
-                {msg.role === 'assistant' ? <Bot className="w-5 h-5" /> : <User className="w-5 h-5" />}
-              </div>
+              {/* Only show avatar for normal text messages of USER */}
+              {!msg.componentType && msg.role === 'user' && (
+                  <div className={`w-8 h-8 rounded-full flex items-center justify-center shrink-0 bg-slate-300 text-slate-600`}>
+                     <User className="w-5 h-5" />
+                  </div>
+              )}
 
-              {msg.componentType === 'PROJECT_SELECTION' && selectedProjects ? (
-                  <div className="flex-1 w-full max-w-md">
+              {msg.componentType === 'PROJECT_SELECTION' && internalSelectedProjects ? (
+                  <div className="flex-1 w-full">
                       <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden shadow-sm">
                           <div className="bg-slate-50 px-4 py-3 border-b border-slate-100 flex justify-between items-center">
                               <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">Selected Projects</span>
-                              <span className="bg-blue-100 text-blue-700 text-xs font-bold px-2 py-0.5 rounded-full">{selectedProjects.length}</span>
+                              <span className="bg-blue-100 text-blue-700 text-xs font-bold px-2 py-0.5 rounded-full">{internalSelectedProjects.length}</span>
                           </div>
                           <div className="max-h-60 overflow-y-auto">
-                              {selectedProjects.map(project => (
+                              {internalSelectedProjects.map(project => (
                                   <div key={project.id} className="p-3 border-b border-slate-100 last:border-0 flex gap-3 hover:bg-slate-50 transition-colors">
                                       <img src={project.image} alt="Project" className="w-12 h-12 rounded-lg object-cover bg-slate-200 shrink-0" />
                                       <div className="min-w-0 flex-1">
-                                          <p className="text-sm font-medium text-slate-900 truncate">{project.address}</p>
+                                          <div className="flex items-center justify-between gap-2">
+                                              <p className="text-sm font-medium text-slate-900 truncate">{project.address}</p>
+                                              {/* New Design Proposal Dropdown */}
+                                              <select className="shrink-0 text-xs border border-slate-200 rounded px-2 py-1 bg-white text-slate-600 focus:outline-none focus:border-blue-400">
+                                                   <option value="v1">9.68kW Solar + 10kWh Battery</option>
+                                                   <option value="v2">18.13kW Solar + 10kWh Battery</option>
+                                               </select>
+                                          </div>
                                           <div className="flex items-center gap-2 mt-1">
                                               <span className={`text-[10px] px-1.5 py-0.5 rounded font-medium ${
                                                   project.status === 'Signed' ? 'bg-green-100 text-green-700' : 
@@ -669,17 +869,31 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
                                   </div>
                               ))}
                           </div>
-                          <div className="p-3 bg-slate-50 border-t border-slate-100 flex gap-2">
+                          <div className="p-3 bg-slate-50 border-t border-slate-100 flex flex-col gap-3">
+                              <label className="flex items-center gap-2 cursor-pointer text-sm text-slate-700 font-medium px-1">
+                                  <input 
+                                      type="checkbox" 
+                                      className="rounded border-slate-300 text-blue-600 focus:ring-blue-500 w-4 h-4"
+                                      checked={mergeOrders}
+                                      onChange={(e) => setMergeOrders(e.target.checked)}
+                                  />
+                                  Merge into a single order
+                              </label>
                               <button 
-                                  onClick={() => handleSimulateUpload()} // Re-use the mock upload flow for now as "Confirm"
-                                  className="flex-1 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium py-2 rounded-lg transition-colors shadow-sm"
+                                  onClick={() => handleSimulateUpload(mergeOrders)} // Pass state directly
+                                  className="w-full bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium py-2 rounded-lg transition-colors shadow-sm"
                               >
-                                  Confirm & Create Order
+                                  Confirm & Create Order{mergeOrders ? '' : 's'}
                               </button>
                           </div>
                       </div>
                   </div>
-              ) : msg.componentType === 'SUMMARY' ? (
+              ) : msg.componentType === 'PROJECT_PICKER' ? (
+                          <ProjectPickerCard 
+                              onConfirm={handlePickProjectsFromChat} 
+                              isSubmitted={internalSelectedProjects.length > 0} 
+                          />
+                      ) : msg.componentType === 'SUMMARY' ? (
                    <div className="flex-1">
                       {customerInfo && (
                         <OrderCard 
@@ -687,8 +901,12 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
                             items={lineItems}
                             onRemoveItem={onRemoveItem}
                             onSubmitOrder={handleInitialSubmit}
-                            onManageOrder={(entry, initialItem) => setActiveOrderModal({ entry, initialItemToSwap: initialItem })}
+                            onManageOrder={(entry) => setActiveOrderModal({ entry })}
+                            onSwapItem={(item) => setIsSwappingItem(item)}
+                            onChangeShippingMethod={handleChangeShippingMethod}
                             isSubmitted={isOrderSubmitted}
+                            pendingPayment={pendingPayment}
+                            paymentTimeLeft={paymentTimeLeft}
                         />
                       )}
                    </div>
@@ -706,17 +924,17 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
                       )}
                   </div>
               ) : (
-                <div className={`flex flex-col p-3 rounded-2xl shadow-sm ${
+                <div className={`flex flex-col w-full ${
                     msg.role === 'user' 
-                    ? 'bg-blue-600 text-white rounded-tr-none' 
+                    ? 'p-3 rounded-2xl shadow-sm bg-blue-600 text-white rounded-tr-none' 
                     : msg.isError 
-                        ? 'bg-red-50 text-red-800 border border-red-200 rounded-tl-none'
-                        : 'bg-white text-slate-800 border border-slate-200 rounded-tl-none'
+                        ? 'p-3 bg-red-50 text-red-800 border border-red-200 rounded-xl'
+                        : 'bg-transparent text-slate-800'
                 }`}>
                     {msg.image && (
-                    <img src={msg.image} alt="User upload" className="max-w-full rounded-lg mb-2 max-h-48 object-cover border border-white/20" />
+                    <img src={msg.image} alt="User upload" className="max-w-full rounded-lg mb-2 max-h-48 object-cover border border-slate-200" />
                     )}
-                    <p className="whitespace-pre-wrap text-sm leading-relaxed">{msg.content}</p>
+                    <p className={`whitespace-pre-wrap leading-relaxed ${msg.role === 'assistant' ? 'text-base font-medium px-1' : 'text-sm'}`}>{msg.content}</p>
                 </div>
               )}
             </div>
@@ -842,6 +1060,14 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
           </div>
         </div>
       </div>
+      {showPaymentModal && (
+          <PaymentModal 
+              amount={lineItems.reduce((acc, item) => acc + (item.totalPrice || 0), 0) * 1.1 + (customerInfo?.orderEntries.length || 0) * 50} // Simple total calculation based on mock data
+              reference={customerInfo?.orderEntries[0]?.poNumber || 'OSW-12345'}
+              onCancel={handlePaymentCancel}
+              onPay={handlePaymentComplete}
+          />
+      )}
     </div>
   );
 };

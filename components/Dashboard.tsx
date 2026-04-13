@@ -8,16 +8,18 @@ import {
   List, 
   ChevronLeft, 
   ChevronRight,
-  FolderOpen
+  FolderOpen,
+  MessageSquare
 } from 'lucide-react';
 import Sidebar from './Sidebar';
 import ProjectCard from './ProjectCard';
 import { ProjectData } from '../types';
 
 interface DashboardProps {
-  onOpenBot: () => void;
+  onOpenBot: (selectedIds?: string[]) => void;
   onProjectClick: (project: ProjectData) => void;
   onOrder: (selectedIds: string[]) => void;
+  onNavChange: (tab: string) => void;
 }
 
 const mockProjects: ProjectData[] = [
@@ -55,10 +57,19 @@ const mockProjects: ProjectData[] = [
     isDemo: true,
     isNew: true,
     user: '-'
+  },
+  {
+    id: '5',
+    address: '999 Already Ordered Ave, Demo City, DC 99999, Australia',
+    status: 'Ordered',
+    date: '10 Apr 2026',
+    image: 'https://picsum.photos/seed/map5/400/300',
+    user: 'Jane Smith',
+    alreadyOrdered: true
   }
 ];
 
-const Dashboard: React.FC<DashboardProps> = ({ onOpenBot, onProjectClick, onOrder }) => {
+const Dashboard: React.FC<DashboardProps> = ({ onOpenBot, onProjectClick, onOrder, onNavChange }) => {
   const [activeTab, setActiveTab] = useState('All Projects');
   const [selectedProjects, setSelectedProjects] = useState<Set<string>>(new Set());
 
@@ -91,7 +102,7 @@ const Dashboard: React.FC<DashboardProps> = ({ onOpenBot, onProjectClick, onOrde
 
   return (
     <div className="flex h-screen bg-gray-50 overflow-hidden font-sans">
-      <Sidebar />
+      <Sidebar activeTab="Projects" onTabChange={onNavChange} />
       
       <main className="flex-1 flex flex-col min-w-0">
         {/* Header */}
@@ -185,6 +196,7 @@ const Dashboard: React.FC<DashboardProps> = ({ onOpenBot, onProjectClick, onOrde
                   selected={selectedProjects.has(project.id)}
                   onSelect={toggleProject}
                   onOrder={(id) => onOrder([id])}
+                  onOpenBot={(id) => onOpenBot([id])}
                 />
               </div>
             ))}
@@ -207,6 +219,13 @@ const Dashboard: React.FC<DashboardProps> = ({ onOpenBot, onProjectClick, onOrde
                 Order
                 <ChevronRight size={16} />
               </button>
+              <button 
+                onClick={() => onOpenBot(Array.from(selectedProjects))}
+                className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-2 rounded-full font-medium shadow-sm transition-all hover:shadow-md flex items-center gap-2"
+              >
+                Bot
+                <MessageSquare size={16} />
+              </button>
             </div>
           )}
         </div>
@@ -224,23 +243,6 @@ const Dashboard: React.FC<DashboardProps> = ({ onOpenBot, onProjectClick, onOrde
           </div>
         </div>
       </main>
-
-      {/* FAB - Bot Trigger */}
-      <button 
-        onClick={onOpenBot}
-        className="fixed bottom-6 right-6 w-14 h-14 bg-blue-600 hover:bg-blue-700 text-white rounded-full shadow-lg flex items-center justify-center transition-transform hover:scale-105 z-40 group"
-      >
-        <div className="relative w-8 h-8 flex items-center justify-center">
-            {/* Simple G logo representation */}
-            <span className="font-bold text-xl italic">G</span>
-            <div className="absolute top-0 right-0 w-2 h-2 bg-red-500 rounded-full border-2 border-blue-600"></div>
-        </div>
-        
-        {/* Tooltip */}
-        <div className="absolute right-full mr-3 bg-gray-900 text-white text-xs px-2 py-1 rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap">
-          Open Sale Admin Bot
-        </div>
-      </button>
     </div>
   );
 };

@@ -87,7 +87,7 @@ const OrderConfirmationModal: React.FC<OrderConfirmationModalProps> = ({
             <div className="bg-blue-50 p-4 rounded-2xl flex gap-3 items-start border border-blue-100">
                  <AlertCircle className="w-5 h-5 text-blue-600 shrink-0 mt-0.5" />
                  <p className="text-xs text-blue-800 leading-relaxed">
-                    <strong>Note:</strong> If you proceed, valid orders will be confirmed immediately. Exception orders will be saved as <strong>Drafts</strong> and a notification will be sent to the Sale Admin for manual review.
+                    <strong>Note:</strong> If you proceed, valid orders will be confirmed immediately. Orders containing out-of-stock items will be processed and paid for, but will be held until the stock is replenished.
                  </p>
             </div>
         </div>
